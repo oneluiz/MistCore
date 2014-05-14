@@ -869,7 +869,7 @@ uint32 Unit::DealDamage(Unit* victim, uint32 damage, CleanDamage const* cleanDam
             }
             case OFF_ATTACK:
             {
-                weaponSpeedHitFactor = uint32(GetAttackTime(cleanDamage->attackType) / 1000.0f * 3.25f);
+                weaponSpeedHitFactor = uint32(GetAttackTime(cleanDamage->attackType) / 1000.0f * (GetTypeId() == TYPEID_PLAYER && ToPlayer()->CanTitanGrip() ? 6.5f : 3.25f));
                 RewardRage(weaponSpeedHitFactor, true);
                 break;
             }
@@ -2602,11 +2602,14 @@ SpellMissInfo Unit::MeleeSpellHitResult(Unit* victim, SpellInfo const* spell)
     // Ranged attacks can only miss, resist and deflect
     if (attType == RANGED_ATTACK)
     {
+        canParry = false;
+        canDodge = false;
+
         // only if in front
-        if (victim->HasInArc(M_PI, this) || victim->HasAuraType(SPELL_AURA_IGNORE_HIT_DIRECTION))
+        if ((victim->HasInArc(M_PI, this) || victim->HasAuraType(SPELL_AURA_IGNORE_HIT_DIRECTION)) && !victim->HasAuraType(SPELL_AURA_MOD_STUN))
         {
             int32 deflect_chance = victim->GetTotalAuraModifier(SPELL_AURA_DEFLECT_SPELLS) * 100;
-            tmp+=deflect_chance;
+            tmp += deflect_chance;
             if (roll < tmp)
                 return SPELL_MISS_DEFLECT;
         }
@@ -2614,22 +2617,15 @@ SpellMissInfo Unit::MeleeSpellHitResult(Unit* victim, SpellInfo const* spell)
     }
 
     // Check for attack from behind
-    if (!victim->HasInArc(M_PI, this))
+    bool IsBehind = FindCurrentSpellBySpellId(spell->Id) && FindCurrentSpellBySpellId(spell->Id)->GetSpellInfo()->AttributesCu & SPELL_ATTR0_CU_REQ_CASTER_BEHIND_TARGET;
+    if (!victim->HasInArc(M_PI, this) || IsBehind) // don't dodge hits that can come only from behind
     {
-        if (!victim->HasAuraType(SPELL_AURA_IGNORE_HIT_DIRECTION))
-        {
-            // Can`t dodge from behind in PvP (but its possible in PvE)
-            if (victim->GetTypeId() == TYPEID_PLAYER)
-                canDodge = false;
-            // Can`t parry or block
-            canParry = false;
-            canBlock = false;
-        }
-        else // Only deterrence as of 3.3.5
-        {
-            if (spell->AttributesCu & SPELL_ATTR0_CU_REQ_CASTER_BEHIND_TARGET)
-                canParry = false;
-        }
+        // Can`t dodge from behind in PvP (but its possible in PvE)
+        if (victim->GetTypeId() == TYPEID_PLAYER)
+            canDodge = false;
+        if (!victim->HasAuraType(SPELL_AURA_IGNORE_HIT_DIRECTION) || IsBehind)
+            canParry = false; //Usable only from behind or without deterrence = can't parry
+        canBlock = false;
     }
     // Check creatures flags_extra for disable parry
     if (victim->GetTypeId() == TYPEID_UNIT)
@@ -8204,30 +8200,27 @@ bool Unit::HandleDummyAuraProc(Unit* victim, uint32 damage, AuraEffectPtr trigge
             if (!isInCombat())
                 return false;
 
-            int32 aviableBasepoints = 0;
-            int32 max_amount = 0;
+            if (dummySpell->Id == 84840 && !HasAura(5487))
+                return false;
 
-            triggered_spell_id = 76691;
+            triggered_spell_id = 132365;
 
-            if (AuraPtr vengeance = GetAura(triggered_spell_id, GetGUID()))
+            int32 basepoints0 = damage * 0.02f; // 20% of damage
+            int32 apcap = GetCreateHealth() * 0.1f; // 10% base HP is the cap
+            if (basepoints0 > 0)
             {
-                aviableBasepoints += vengeance->GetEffect(EFFECT_0)->GetAmount();
-                max_amount += vengeance->GetEffect(EFFECT_2)->GetAmount();
+                if (AuraPtr veng = victim->GetAura(triggered_spell_id))
+                {
+                    basepoints0 += veng->GetEffect(EFFECT_0)->GetAmount();
+                    veng->GetEffect(EFFECT_0)->ChangeAmount(apcap > basepoints0 ? basepoints0 : apcap);
+                    veng->SetNeedClientUpdateForTargets(); // ap doesnt update on aura bar
+                }
+                else
+                {
+                    if (AuraPtr veng = victim->AddAura(triggered_spell_id, victim))
+                        veng->GetEffect(EFFECT_0)->ChangeAmount(basepoints0);
+                }
             }
-
-            // The first melee attack taken by the tank generates Vengeance equal to 33% of the damage taken by that attack.
-           if (!aviableBasepoints && (procFlag & (PROC_FLAG_TAKEN_MELEE_AUTO_ATTACK)))
-                triggerAmount = 33;
-
-            int32 cap = (GetCreateHealth() + GetStat(STAT_STAMINA) * 14) / 10;
-            basepoints0 = int32(damage * triggerAmount / 100);
-            basepoints0 += aviableBasepoints;
-            basepoints0 = std::min(cap, basepoints0);
-
-            // calculate max amount player's had durind the fight
-            int32 basepoints1 = std::max(basepoints0, max_amount);
-
-            CastCustomSpell(this, triggered_spell_id, &basepoints0, &basepoints0, &basepoints1, true, castItem, triggeredByAura, originalCaster);
             return true;
         }
         default:
@@ -9455,9 +9448,7 @@ bool Unit::HandleProcTriggerSpell(Unit* victim, uint32 damage, AuraEffectPtr tri
         // Blazing Speed
         case 113857:
         {
-            uint32 health = CountPctFromMaxHealth(2);
-
-            if (damage < 0 && damage < health && !(procFlags & PROC_FLAG_KILL))
+            if (damage < CountPctFromMaxHealth(2) && !(procFlags & PROC_FLAG_KILL))
                 return false;
 
             break;
@@ -15383,7 +15374,7 @@ void Unit::SetPower(Powers power, int32 val)
     if (maxPower < val)
         val = maxPower;
 
-	if(val == GetInt32Value(UNIT_FIELD_POWER1 + powerIndex))
+    if (val == GetInt32Value(UNIT_FIELD_POWER1 + powerIndex))
         return;
 
     SetInt32Value(UNIT_FIELD_POWER1 + powerIndex, val);
@@ -16239,7 +16230,7 @@ void Unit::ProcDamageAndSpellFor(bool isVictim, Unit* target, uint32 procFlag, u
 
         for (auto itr : shadowylist)
         {
-            if(UnitAI* ai =  itr->GetAI())
+            if (UnitAI* ai =  itr->GetAI())
                 ai->SetGUID(target->GetGUID());
             itr->GetMotionMaster()->MovePoint(1, target->GetPositionX(), target->GetPositionY(), target->GetPositionZ());
         }

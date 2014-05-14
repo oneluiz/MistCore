@@ -5158,14 +5158,12 @@ void Spell::EffectScriptEffect(SpellEffIndex effIndex)
                     if (m_targets.GetUnitTarget()->GetAura(55078))
                     {
                         m_caster->CastSpell(unitTarget, 55078, true);
-                        m_caster->AddAura(63687, unitTarget);                           // Cosmetic - Pestilence State
                         m_targets.GetUnitTarget()->CastSpell(unitTarget, 91939, true);  // Cosmetic - Send Diseases on target
                     }
                     // Frost Fever
                     if (m_targets.GetUnitTarget()->GetAura(55095))
                     {
                         m_caster->CastSpell(unitTarget, 55095, true);
-                        m_caster->AddAura(63687, unitTarget);                           // Cosmetic - Pestilence State
                         m_targets.GetUnitTarget()->CastSpell(unitTarget, 91939, true);  // Cosmetic - Send Diseases on target
                     }
                 }
@@ -5211,7 +5209,7 @@ void Spell::EffectSanctuary(SpellEffIndex /*effIndex*/)
         if (m_caster->ToPlayer()->HasSpell(58426))
            m_caster->CastSpell(m_caster, 58427, true);
     }
-    else if(!IsTriggered())
+    else if (!IsTriggered())
         unitTarget->m_lastSanctuaryTime = getMSTime();
 
 }
@@ -5922,25 +5920,25 @@ void Spell::EffectSkinning(SpellEffIndex /*effIndex*/)
 
     int32 reqValue = 0;
     
-    if(targetLevel < 10)
+    if (targetLevel < 10)
         reqValue = 0;
-    else if(targetLevel < 20)
+    else if (targetLevel < 20)
         reqValue = (targetLevel-10)*10;
-    else if(targetLevel < 74)
+    else if (targetLevel < 74)
         reqValue = targetLevel*5;
-    else if(targetLevel < 81)
+    else if (targetLevel < 81)
         reqValue = (targetLevel*5)+(targetLevel-73)*5;
-    else if(targetLevel < 85)
+    else if (targetLevel < 85)
         reqValue = (targetLevel*5)+35;
-    else if(targetLevel == 85) // @TODO find a generic formula
+    else if (targetLevel == 85) // @TODO find a generic formula
         reqValue = 470;
-    else if(targetLevel == 86)
+    else if (targetLevel == 86)
         reqValue = 485;
-    else if(targetLevel == 87)
+    else if (targetLevel == 87)
         reqValue = 495;
-    else if(targetLevel == 88)
+    else if (targetLevel == 88)
         reqValue = 520;
-    else if(targetLevel == 89)
+    else if (targetLevel == 89)
         reqValue = 540;
     else
         reqValue = 560;   
